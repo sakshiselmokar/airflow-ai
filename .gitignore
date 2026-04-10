@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 old_venv/
 *.log
+venv-airdraw
