@@ -1,23 +1,28 @@
 import numpy as np
 
-def normalize_stroke(stroke, size=28):
+def normalize_stroke(strokes, size=28):
     """
-    Normalize stroke to fit into a size x size grid
+    strokes = [ [(x,y)...], [(x,y)...] ]
     """
-    stroke = np.array(stroke)
+    all_points = np.concatenate(strokes)
 
-    # Shift to origin
-    min_x, min_y = np.min(stroke, axis=0)
-    stroke -= [min_x, min_y]
+    min_x, min_y = np.min(all_points, axis=0)
+    all_points -= [min_x, min_y]
 
-    # Scale to fit
-    max_x, max_y = np.max(stroke, axis=0)
+    max_x, max_y = np.max(all_points, axis=0)
     scale = max(max_x, max_y)
 
     if scale != 0:
-        stroke = stroke / scale
+        all_points = all_points / scale
 
-    # Scale to grid size
-    stroke = stroke * (size - 1)
+    all_points = all_points * (size - 1)
 
-    return stroke.astype(int)
+    normalized = []
+    idx = 0
+
+    for stroke in strokes:
+        length = len(stroke)
+        normalized.append(all_points[idx:idx+length].astype(int))
+        idx += length
+
+    return normalized
