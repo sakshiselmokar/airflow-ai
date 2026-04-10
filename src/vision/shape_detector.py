@@ -41,9 +41,18 @@ def detect_shape(stroke):
     sides = len(approx)
 
     # 🔥 LINE detection
+    # x, y, w, h = cv2.boundingRect(cnt)
+    # 🔥 LINE detection (better)
     x, y, w, h = cv2.boundingRect(cnt)
-    if h < 15 or w < 15:
-        return "line"
+
+    aspect_ratio = max(w, h) / (min(w, h) + 1e-6)
+    area = cv2.contourArea(cnt)
+
+    # long + thin shape
+    if aspect_ratio > 5 and area < 3000:
+        return "line"    
+    # if h < 15 or w < 15:
+    #     return "line"
 
     # 🔥 RECTANGLE detection using ANGLES
     if sides == 4:
