@@ -42,6 +42,22 @@ class HandTracker:
         # ✅ Day 4
         self.connections = []
 
+    # ✅ Day 5 EXPORT FUNCTION
+    def export_data(self):
+        return {
+            "shapes": [
+                {"type": s.type, "center": s.center}
+                for s in self.shapes
+            ],
+            "connections": [
+                {
+                    "from": (c.from_shape.type, c.from_shape.center),
+                    "to": (c.to_shape.type, c.to_shape.center)
+                }
+                for c in self.connections
+            ]
+        }
+
     def is_drawing(self, landmarks):
         tips = [8, 12, 16, 20]
         fingers = []
@@ -162,7 +178,13 @@ class HandTracker:
             elif key == ord('c'):
                 self.points = []
                 self.shapes = []
-                self.connections = []  # ✅ clear all
+                self.connections = []
+
+            # ✅ EXPORT TRIGGER
+            elif key == ord('e'):
+                data = self.export_data()
+                print("\n--- EXPORT DATA ---")
+                print(data)
 
         cap.release()
         cv2.destroyAllWindows()
