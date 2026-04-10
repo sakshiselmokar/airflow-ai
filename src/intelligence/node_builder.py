@@ -22,8 +22,31 @@ def build_nodes(shapes):
     return nodes
 
 # ✅ ADD THIS FUNCTION
-def build_graph(nodes):
+def build_graph(nodes, connections):
+    edges = build_edges(connections, nodes)
+
     return {
         "nodes": nodes,
-        "edges": []  # will be filled in Day 4
+        "edges": edges
     }
+
+def build_edges(connections, nodes):
+    edges = []
+
+    # Map shape center → node id
+    shape_to_id = {tuple(node["pos"]): node["id"] for node in nodes}
+
+    for conn in connections:
+        from_shape = conn.from_shape
+        to_shape = conn.to_shape
+
+        from_id = shape_to_id.get(tuple(from_shape.center))
+        to_id = shape_to_id.get(tuple(to_shape.center))
+
+        if from_id and to_id:
+            edges.append({
+                "from": from_id,
+                "to": to_id
+            })
+
+    return edges
