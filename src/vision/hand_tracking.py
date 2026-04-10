@@ -6,6 +6,25 @@ mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 
 
+def find_nearest_shape(shapes, point):
+    if not shapes:
+        return None
+
+    px, py = point
+    min_dist = float('inf')
+    nearest = None
+
+    for shape in shapes:
+        sx, sy = shape.center
+        dist = (sx - px) ** 2 + (sy - py) ** 2
+
+        if dist < min_dist:
+            min_dist = dist
+            nearest = shape
+
+    return nearest
+
+
 class HandTracker:
     def __init__(self):
         self.hands = mp_hands.Hands(
@@ -17,8 +36,11 @@ class HandTracker:
         self.prev_x, self.prev_y = 0, 0
         self.was_drawing = False
 
-        # ✅ NEW (Day 3)
+        # ✅ Day 3
         self.shapes = []
+
+        # ✅ Day 4
+        self.connections = []
 
     def is_drawing(self, landmarks):
         tips = [8, 12, 16, 20]
@@ -71,12 +93,28 @@ class HandTracker:
 
                             if len(stroke) > 20:
                                 from src.vision.shape_detector import detect_shape
-                                from src.shared.data_models import Shape
+                                from src.shared.data_models import Shape, Connection
 
                                 shape_type = detect_shape(stroke)
 
-                                if shape_type != "unknown":
-                                    pts = np.array(stroke)
+                                pts = np.array(stroke)
+                                start_point = tuple(pts[0])
+                                end_point = tuple(pts[-1])
+
+                                # 🔥 LINE = CONNECTION
+                                if shape_type == "line" and len(self.shapes) >= 2:
+
+                                    from_shape = find_nearest_shape(self.shapes, start_point)
+                                    to_shape = find_nearest_shape(self.shapes, end_point)
+
+                                    if from_shape and to_shape and from_shape != to_shape:
+                                        conn = Connection(from_shape, to_shape)
+                                        self.connections.append(conn)
+
+                                        print("Connection:", conn)
+
+                                # 🔥 NORMAL SHAPES
+                                elif shape_type != "unknown":
                                     cx = int(np.mean(pts[:, 0]))
                                     cy = int(np.mean(pts[:, 1]))
 
@@ -96,12 +134,20 @@ class HandTracker:
                     continue
                 cv2.line(frame, self.points[i - 1], self.points[i], (0, 255, 0), 3)
 
-            # ✅ SHOW STORED SHAPES (Day 3)
+            # ✅ SHOW SHAPES
             y_offset = 60
             for s in self.shapes:
                 text = f"{s.type} at {s.center}"
                 cv2.putText(frame, text, (10, y_offset),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+                y_offset += 25
+
+            # ✅ SHOW CONNECTIONS
+            y_offset += 20
+            for c in self.connections:
+                text = f"{c.from_shape.type} -> {c.to_shape.type}"
+                cv2.putText(frame, text, (10, y_offset),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
                 y_offset += 25
 
             cv2.putText(frame, f"Points: {len(self.points)}", (10, 30),
@@ -115,7 +161,8 @@ class HandTracker:
                 break
             elif key == ord('c'):
                 self.points = []
-                self.shapes = []  # ✅ also clear shapes
+                self.shapes = []
+                self.connections = []  # ✅ clear all
 
         cap.release()
         cv2.destroyAllWindows()
