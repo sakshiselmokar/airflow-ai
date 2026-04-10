@@ -1,18 +1,19 @@
-from src.shared.data_models import Shape
+from src.shared.data_models import Shape, Connection
 from src.intelligence.node_builder import build_nodes, build_graph
 
-# Dummy shapes (simulate Person A output)
-shapes = [
-    Shape("rectangle", (320, 210)),
-    Shape("circle", (400, 300)),
-    Shape("line", (500, 250))
+# Shapes
+shape1 = Shape("rectangle", (320, 210))
+shape2 = Shape("circle", (400, 300))
+
+shapes = [shape1, shape2]
+
+# 🔥 NOW using Connection class
+connections = [
+    Connection(shape1, shape2)
 ]
 
-# Convert to nodes
 nodes = build_nodes(shapes)
-
-# Build graph
-graph = build_graph(nodes)
+graph = build_graph(nodes, connections)
 
 print("\n--- Nodes ---")
 print(nodes)
