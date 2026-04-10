@@ -15,7 +15,9 @@ class HandTracker:
         )
         self.points = []
         self.prev_x, self.prev_y = 0, 0
+        self.was_drawing = False
 
+        
     def is_drawing(self, landmarks):
         # Check if only index finger is up
         tips = [8, 12, 16, 20]
@@ -58,11 +60,28 @@ class HandTracker:
                     cy = int(0.7 * self.prev_y + 0.3 * cy)
 
                     self.prev_x, self.prev_y = cx, cy
-
                     if self.is_drawing(lm):
                         self.points.append((cx, cy))
+                        self.was_drawing = True
+
                     else:
+                        # user just stopped drawing
+                        if self.was_drawing:
+                            stroke = get_last_stroke(self.points)
+
+                            if len(stroke) > 20:
+                                from src.vision.shape_detector import detect_shape
+
+                                shape = detect_shape(stroke)
+                                print("Shape:", shape)
+
                         self.points.append(None)
+                        self.was_drawing = False
+
+                    # if self.is_drawing(lm):
+                    #     self.points.append((cx, cy))
+                    # else:
+                    #     self.points.append(None)
 
                     mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
@@ -71,6 +90,14 @@ class HandTracker:
                 if self.points[i - 1] is None or self.points[i] is None:
                     continue
                 cv2.line(frame, self.points[i - 1], self.points[i], (0, 255, 0), 3)
+            # --- TEST INTEGRATION (temporary) ---
+            # stroke = get_last_stroke(self.points)
+            # if len(stroke) > 20 and self.points[-1] is None:
+            #     from src.vision.shape_detector import detect_shape
+
+            #     shape = detect_shape(stroke)
+            #     print("Shape:", shape)
+                           
             cv2.putText(frame, f"Points: {len(self.points)}", (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             cv2.imshow("Air Drawing", frame)
@@ -85,6 +112,16 @@ class HandTracker:
         cap.release()
         cv2.destroyAllWindows()
 
+
+def get_last_stroke(points):
+    stroke = []
+
+    for p in reversed(points):
+        if p is None:
+            break
+        stroke.append(p)
+
+    return stroke[::-1]
 
 if __name__ == "__main__":
     tracker = HandTracker()
