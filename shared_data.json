@@ -1,0 +1,1 @@
+{"shapes": [{"type": "rectangle", "center": [450, 198]}, {"type": "rectangle", "center": [250, 131]}, {"type": "rectangle", "center": [169, 296]}], "connections": [{"from": ["rectangle", [169, 296]], "to": ["rectangle", [450, 198]]}]}

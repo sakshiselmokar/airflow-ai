@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+old_venv/
+*.log
+venv-airdraw
+data/
+*.pth
+*.zip
+__pycache__/
+venv/
+data/*
