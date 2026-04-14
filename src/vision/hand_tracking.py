@@ -206,39 +206,47 @@ class HandTracker:
 
                         self.points.append(None)
                         self.was_drawing = False
-
-                # ================= TEXT MODE =================
                 elif self.mode == "text":
                     if self.is_drawing(lm):
                         self.text_points.append((cx, cy))
                         self.was_drawing = True
 
                     else:
-                        if self.was_drawing and len(self.text_points) > 40 and self.text_cooldown == 0:
-
+                        if (
+                            self.was_drawing
+                            and len(self.text_points) > 40
+                            and self.text_cooldown == 0
+                        ):
                             img = normalize_stroke(self.text_points)
 
                             if img is not None:
                                 char = predict_character(img)
 
-                                if time.time() - self.last_char_time > 1:
-                                    self.text_buffer += " "
+                                # 🔥 SAFETY: ignore garbage predictions
+                                if char and isinstance(char, str) and len(char) == 1:
 
-                                self.text_buffer += char
-                                self.last_char_time = time.time()
-                                self.text_cooldown = 15
+                                    # spacing logic
+                                    if time.time() - self.last_char_time > 1:
+                                        self.text_buffer += " "
 
-                                print("TEXT:", self.text_buffer)
+                                    self.text_buffer += char
+                                    self.last_char_time = time.time()
+                                    self.text_cooldown = 15
 
-                                nearest = find_nearest_shape(self.shapes, self.text_points[0])
-                                if nearest:
-                                    if not hasattr(nearest, "text"):
-                                        nearest.text = ""
-                                    nearest.text += char
+                                    print("TEXT:", self.text_buffer)
 
+                                    # 🔥 FIX: SAFE TEXT ASSIGNMENT
+                                    nearest = find_nearest_shape(self.shapes, self.text_points[0])
+                                    if nearest:
+                                        if not hasattr(nearest, "text") or nearest.text is None:
+                                            nearest.text = ""
+
+                                        nearest.text += char
+
+                        # reset stroke
                         self.text_points = []
                         self.was_drawing = False
-
+                
                 mp_draw.draw_landmarks(frame, results.multi_hand_landmarks[0], mp_hands.HAND_CONNECTIONS)
 
             # cooldown
@@ -263,7 +271,7 @@ class HandTracker:
                 elif s.type == "rectangle":
                     cv2.rectangle(frame, (x - 40, y - 30), (x + 40, y + 30), (255, 0, 0), 3)
 
-                label = getattr(s, "text", s.type)
+                label = s.text if hasattr(s, "text") and s.text else s.type
 
                 cv2.putText(frame, label, (x - 20, y - 40),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
