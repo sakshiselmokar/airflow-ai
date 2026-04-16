@@ -1,4 +1,6 @@
 from src.shared.data_models import Shape, Connection
+from src.intelligence.node_builder import build_nodes, build_graph
+
 
 def parse_input(data):
     shapes = []
@@ -7,6 +9,7 @@ def parse_input(data):
     # recreate Shape objects
     for s in data["shapes"]:
         shape = Shape(s["type"], tuple(s["center"]), s.get("meaning", "process"))
+        shape.text = s.get("text", "")
         shapes.append(shape)
         shape_lookup[(s["type"], tuple(s["center"]))] = shape
 
@@ -24,15 +27,13 @@ def parse_input(data):
 
     return shapes, connections
 
-from src.intelligence.node_builder import build_nodes, build_graph
 
 def create_graph(data):
     shapes, connections = parse_input(data)
-
     nodes = build_nodes(shapes)
     graph = build_graph(nodes, connections)
-
     return graph
+
 
 def traverse_graph(graph):
     edges = graph["edges"]
@@ -42,6 +43,7 @@ def traverse_graph(graph):
 
     if not edges:
         return flow
+
     incoming = set(e["to"] for e in edges)
     start_nodes = [nid for nid in nodes if nid not in incoming]
 
@@ -51,33 +53,17 @@ def traverse_graph(graph):
 
     while current not in visited:
         visited.add(current)
-        flow.append(nodes[current])
 
-        next_node = None
-        for e in edges:
-            if e["from"] == current:
-                next_node = e["to"]
-                break
+        node = nodes[current]
+        flow.append(node)
 
-        if next_node is None:
+        # handle multiple outgoing edges (basic)
+        outgoing = [e for e in edges if e["from"] == current]
+
+        if not outgoing:
             break
 
-        current = next_node
+        # for MVP → take first edge
+        current = outgoing[0]["to"]
 
     return flow
-
-def generate_code(flow):
-    code = ["def flow():"]
-
-    for step in flow:
-        if step["type"] == "start":
-            code.append('    print("Start")')
-
-        elif step["type"] == "process":
-            code.append('    print("Process Step")')
-
-        elif step["type"] == "end":
-            code.append('    print("End")')
-
-    return "\n".join(code)
-

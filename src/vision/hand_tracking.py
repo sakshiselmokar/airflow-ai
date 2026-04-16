@@ -5,7 +5,6 @@ import time
 from collections import Counter
 
 from src.vision.gesture_detector import detect_gesture
-from src.shared.gesture_map import GESTURE_TO_MEANING
 from src.shared.data_models import Shape, Connection
 from src.intelligence.text.predict import predict_character
 from src.intelligence.text.preprocess import normalize_stroke
@@ -20,18 +19,7 @@ def find_nearest_shape(shapes, point):
         return None
 
     px, py = point
-    min_dist = float('inf')
-    nearest = None
-
-    for shape in shapes:
-        sx, sy = shape.center
-        dist = (sx - px) ** 2 + (sy - py) ** 2
-
-        if dist < min_dist:
-            min_dist = dist
-            nearest = shape
-
-    return nearest
+    return min(shapes, key=lambda s: (s.center[0] - px) ** 2 + (s.center[1] - py) ** 2)
 
 
 def get_last_stroke(points):
@@ -51,31 +39,24 @@ class HandTracker:
             min_tracking_confidence=0.7
         )
 
-        # Drawing
         self.points = []
         self.text_points = []
         self.was_drawing = False
 
         self.prev_x, self.prev_y = 0, 0
 
-        # Data
         self.shapes = []
         self.connections = []
 
-        # Text
         self.text_buffer = ""
         self.text_cooldown = 0
         self.last_char_time = time.time()
 
-        # Mode
         self.mode = "idle"
 
-        # Gesture stability
         self.gesture_history = []
         self.last_gesture = None
 
-    # -------------------------
-    # Gesture helpers
     # -------------------------
     def get_stable_gesture(self):
         if not self.gesture_history:
@@ -94,8 +75,6 @@ class HandTracker:
         return self.mode
 
     # -------------------------
-    # Undo
-    # -------------------------
     def undo(self):
         if self.text_buffer:
             self.text_buffer = self.text_buffer[:-1]
@@ -109,8 +88,6 @@ class HandTracker:
             removed = self.shapes.pop()
             print("UNDO SHAPE:", removed)
 
-    # -------------------------
-    # Export
     # -------------------------
     def export_data(self):
         return {
@@ -152,7 +129,6 @@ class HandTracker:
             if results.multi_hand_landmarks:
                 lm = results.multi_hand_landmarks[0].landmark
 
-                # Gesture detection
                 gesture = detect_gesture(results.multi_hand_landmarks[0])
 
                 if gesture:
@@ -165,7 +141,6 @@ class HandTracker:
                     self.last_gesture = stable
                     self.mode = self.update_mode(stable)
 
-                # Coordinates
                 h, w, _ = frame.shape
                 cx = int(lm[8].x * w)
                 cy = int(lm[8].y * h)
@@ -177,6 +152,8 @@ class HandTracker:
 
                 # ================= SHAPE MODE =================
                 if self.mode == "shape":
+                    self.text_points = []
+
                     if self.is_drawing(lm):
                         self.points.append((cx, cy))
                         self.was_drawing = True
@@ -188,7 +165,13 @@ class HandTracker:
                             if len(stroke) > 20:
                                 shape_type = detect_shape(stroke)
                                 pts = np.array(stroke)
-                                center = (int(np.mean(pts[:, 0])), int(np.mean(pts[:, 1])))
+
+                                center = (
+                                    int(np.mean(pts[:, 0])),
+                                    int(np.mean(pts[:, 1]))
+                                )
+
+                                x, y, w_box, h_box = cv2.boundingRect(pts)
 
                                 if shape_type == "line" and len(self.shapes) >= 2:
                                     s1 = find_nearest_shape(self.shapes, stroke[0])
@@ -199,14 +182,30 @@ class HandTracker:
                                         print("Connection created")
 
                                 elif shape_type != "unknown":
-                                    meaning = GESTURE_TO_MEANING.get(self.last_gesture, "process")
+
+                                    # 🔥 FIXED MEANING LOGIC
+                                    meaning = "process"
+
+                                    if self.last_gesture == "thumbs_up":
+                                        if not any(s.meaning == "start" for s in self.shapes):
+                                            meaning = "start"
+
+                                    elif self.last_gesture == "two_fingers":
+                                        meaning = "condition"
+
                                     shape_obj = Shape(shape_type, center, meaning)
+                                    shape_obj.bbox = (x, y, w_box, h_box)
+
                                     self.shapes.append(shape_obj)
-                                    print("Stored:", shape_obj)
+                                    print("Stored:", meaning)
 
                         self.points.append(None)
                         self.was_drawing = False
+
+                # ================= TEXT MODE =================
                 elif self.mode == "text":
+                    self.points = []
+
                     if self.is_drawing(lm):
                         self.text_points.append((cx, cy))
                         self.was_drawing = True
@@ -214,7 +213,7 @@ class HandTracker:
                     else:
                         if (
                             self.was_drawing
-                            and len(self.text_points) > 40
+                            and 20 < len(self.text_points) < 200   # 🔥 controlled stroke size
                             and self.text_cooldown == 0
                         ):
                             img = normalize_stroke(self.text_points)
@@ -222,10 +221,9 @@ class HandTracker:
                             if img is not None:
                                 char = predict_character(img)
 
-                                # 🔥 SAFETY: ignore garbage predictions
-                                if char and isinstance(char, str) and len(char) == 1:
+                                print("PREDICTED:", char)
 
-                                    # spacing logic
+                                if char:
                                     if time.time() - self.last_char_time > 1:
                                         self.text_buffer += " "
 
@@ -233,23 +231,20 @@ class HandTracker:
                                     self.last_char_time = time.time()
                                     self.text_cooldown = 15
 
-                                    print("TEXT:", self.text_buffer)
-
-                                    # 🔥 FIX: SAFE TEXT ASSIGNMENT
                                     nearest = find_nearest_shape(self.shapes, self.text_points[0])
                                     if nearest:
-                                        if not hasattr(nearest, "text") or nearest.text is None:
+                                        if not nearest.text:
                                             nearest.text = ""
 
                                         nearest.text += char
+                                else:
+                                    print("IGNORED LOW CONFIDENCE")
 
-                        # reset stroke
                         self.text_points = []
-                        self.was_drawing = False
+                        self.was_drawing = False                
                 
                 mp_draw.draw_landmarks(frame, results.multi_hand_landmarks[0], mp_hands.HAND_CONNECTIONS)
 
-            # cooldown
             if self.text_cooldown > 0:
                 self.text_cooldown -= 1
 
@@ -271,7 +266,7 @@ class HandTracker:
                 elif s.type == "rectangle":
                     cv2.rectangle(frame, (x - 40, y - 30), (x + 40, y + 30), (255, 0, 0), 3)
 
-                label = s.text if hasattr(s, "text") and s.text else s.type
+                label = s.text if s.text else s.type
 
                 cv2.putText(frame, label, (x - 20, y - 40),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
@@ -287,10 +282,6 @@ class HandTracker:
             cv2.putText(frame, f"Text: {self.text_buffer}", (10, 80),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-            cv2.putText(frame, "C: Clear | U: Undo | E: Export | Q: Quit",
-                        (10, frame.shape[0] - 20),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-
             cv2.imshow("AirFlow", frame)
 
             key = cv2.waitKey(1)
@@ -299,7 +290,6 @@ class HandTracker:
                 break
 
             elif key == ord('c'):
-                print("CLEAR ALL")
                 self.points = []
                 self.text_points = []
                 self.text_buffer = ""

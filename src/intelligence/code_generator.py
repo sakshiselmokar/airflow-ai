@@ -8,7 +8,7 @@ def generate_code(flow):
 
         elif step_type == "process":
             if node.get("text"):
-                code.append(f"    {node['text']}")
+                code.append(f"    print('{node['text']}')")  # 🔥 FIX
             else:
                 code.append("    print('Process Step')")
 
