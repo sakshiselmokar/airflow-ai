@@ -87,38 +87,48 @@ def build_flow_tree(graph):
     nodes = {n["id"]: n for n in graph["nodes"]}
     adj = build_adjacency(graph)
 
-    # find start
+    # stable ordering
+    for k in adj:
+        adj[k] = sorted(adj[k], key=lambda e: e["to"])
+
     incoming = set(e["to"] for e in graph["edges"])
     start_nodes = [nid for nid in nodes if nid not in incoming]
 
+    if not start_nodes:
+        print("❌ No start node")
+        return None
+
     start = start_nodes[0]
 
-    def dfs(node_id):
-        node = nodes[node_id]
+    def dfs(node_id, visited):
+        if node_id in visited:
+            return None
 
+        visited = visited.copy()
+        visited.add(node_id)
+
+        node = nodes[node_id]
         children = adj.get(node_id, [])
 
-        # condition node → branch
         if node["type"] == "condition" and len(children) >= 2:
             return {
                 "type": "condition",
-                "text": node.get("text"),
-                "yes": dfs(children[0]["to"]),
-                "no": dfs(children[1]["to"])
+                "text": node.get("text", ""),
+                "yes": dfs(children[0]["to"], visited),
+                "no": dfs(children[1]["to"], visited)
             }
 
-        # normal node
-        elif children:
-            return {
-                "type": node["type"],
-                "text": node.get("text"),
-                "next": dfs(children[0]["to"])
-            }
+        result = {
+            "type": node["type"],
+            "text": node.get("text", "")
+        }
 
-        else:
-            return {
-                "type": node["type"],
-                "text": node.get("text")
-            }
+        if children:
+            if len(children) > 1:
+                print("⚠️ Multiple branches detected")
 
-    return dfs(start)
+            result["next"] = dfs(children[0]["to"], visited)
+
+        return result
+
+    return dfs(start, set())

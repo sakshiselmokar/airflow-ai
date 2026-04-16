@@ -1,34 +1,46 @@
 def generate_code(flow):
     code = ["def flow():"]
-    
+
     def generate(node, indent="    "):
+        if not node:
+            return
+
         t = node["type"]
-        text = node.get("text")
+        text = node.get("text", "")
+
+        safe_text = str(text).replace("'", "").replace("\n", " ")
 
         if t == "start":
             code.append(indent + "print('Start')")
 
         elif t == "process":
-            if text:
-                code.append(indent + f"print('{text}')")
+            if safe_text:
+                code.append(indent + f"print('{safe_text}')")
             else:
                 code.append(indent + "print('Process')")
 
         elif t == "condition":
-            cond = text if text else "True"
+            cond = safe_text if safe_text else "True"
 
             code.append(indent + f"if {cond}:")
-            generate(node["yes"], indent + "    ")
+
+            if node.get("yes"):
+                generate(node["yes"], indent + "    ")
+            else:
+                code.append(indent + "    pass")
 
             code.append(indent + "else:")
-            generate(node["no"], indent + "    ")
 
-            return  # IMPORTANT
+            if node.get("no"):
+                generate(node["no"], indent + "    ")
+            else:
+                code.append(indent + "    pass")
+
+            return
 
         elif t == "end":
             code.append(indent + "print('End')")
 
-        # next chain
         if "next" in node:
             generate(node["next"], indent)
 
