@@ -1,5 +1,5 @@
-opencv-python
-mediapipe
-numpy
-opencv-python
-tensorflow
+numpy==1.26.4
+mediapipe==0.10.20
+opencv-contrib-python==4.11.0.86
+torch==2.11.0
+torchvision
