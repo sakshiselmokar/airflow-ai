@@ -29,20 +29,23 @@ def build_graph(nodes, connections):
         "edges": edges
     }
 
-
 def build_edges(connections, nodes):
     edges = []
 
     shape_to_id = {tuple(node["pos"]): node["id"] for node in nodes}
 
     for conn in connections:
-        from_id = shape_to_id.get(tuple(conn.from_shape.center))
-        to_id = shape_to_id.get(tuple(conn.to_shape.center))
+        from_shape = conn.from_shape
+        to_shape = conn.to_shape
+
+        from_id = shape_to_id.get(tuple(from_shape.center))
+        to_id = shape_to_id.get(tuple(to_shape.center))
 
         if from_id and to_id:
             edges.append({
                 "from": from_id,
-                "to": to_id
+                "to": to_id,
+                "label": None  # 🔥 will be "yes" / "no" later
             })
 
     return edges

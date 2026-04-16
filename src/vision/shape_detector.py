@@ -39,18 +39,25 @@ def detect_shape(stroke):
     approx = cv2.approxPolyDP(cnt, epsilon, True)
 
     sides = len(approx)
+    # 🔥 IMPROVED LINE DETECTION
 
-    # 🔥 LINE detection
-    # x, y, w, h = cv2.boundingRect(cnt)
-    # 🔥 LINE detection (better)
     x, y, w, h = cv2.boundingRect(cnt)
 
     aspect_ratio = max(w, h) / (min(w, h) + 1e-6)
     area = cv2.contourArea(cnt)
+    perimeter = cv2.arcLength(cnt, False)
 
-    # long + thin shape
-    if aspect_ratio > 5 and area < 3000:
-        return "line"    
+    # length-based detection
+    length = max(w, h)
+
+    # ✅ more forgiving conditions
+    if (
+        aspect_ratio > 2.5      # was 5 → easier now
+        and length > 50         # ensure it's long enough
+        and area < 8000        # relaxed from 3000
+    ):
+        return "line"
+     
     # if h < 15 or w < 15:
     #     return "line"
 

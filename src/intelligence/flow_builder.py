@@ -67,3 +67,58 @@ def traverse_graph(graph):
         current = outgoing[0]["to"]
 
     return flow
+
+def build_adjacency(graph):
+    adj = {}
+
+    for edge in graph["edges"]:
+        frm = edge["from"]
+        to = edge["to"]
+
+        if frm not in adj:
+            adj[frm] = []
+
+        adj[frm].append(edge)
+
+    return adj
+
+
+def build_flow_tree(graph):
+    nodes = {n["id"]: n for n in graph["nodes"]}
+    adj = build_adjacency(graph)
+
+    # find start
+    incoming = set(e["to"] for e in graph["edges"])
+    start_nodes = [nid for nid in nodes if nid not in incoming]
+
+    start = start_nodes[0]
+
+    def dfs(node_id):
+        node = nodes[node_id]
+
+        children = adj.get(node_id, [])
+
+        # condition node → branch
+        if node["type"] == "condition" and len(children) >= 2:
+            return {
+                "type": "condition",
+                "text": node.get("text"),
+                "yes": dfs(children[0]["to"]),
+                "no": dfs(children[1]["to"])
+            }
+
+        # normal node
+        elif children:
+            return {
+                "type": node["type"],
+                "text": node.get("text"),
+                "next": dfs(children[0]["to"])
+            }
+
+        else:
+            return {
+                "type": node["type"],
+                "text": node.get("text")
+            }
+
+    return dfs(start)
