@@ -1,3 +1,5 @@
+# HANDTRACKING
+
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -19,7 +21,18 @@ def find_nearest_shape(shapes, point):
         return None
 
     px, py = point
-    return min(shapes, key=lambda s: (s.center[0] - px) ** 2 + (s.center[1] - py) ** 2)
+
+    nearest = min(
+        shapes,
+        key=lambda s: (s.center[0] - px) ** 2 + (s.center[1] - py) ** 2
+    )
+
+    dist = (nearest.center[0] - px) ** 2 + (nearest.center[1] - py) ** 2
+
+    if dist < 5000:
+        return nearest
+
+    return None
 
 
 def get_last_stroke(points):
@@ -57,7 +70,6 @@ class HandTracker:
         self.gesture_history = []
         self.last_gesture = None
 
-    # -------------------------
     def get_stable_gesture(self):
         if not self.gesture_history:
             return None
@@ -74,21 +86,16 @@ class HandTracker:
             return "idle"
         return self.mode
 
-    # -------------------------
     def undo(self):
         if self.text_buffer:
             self.text_buffer = self.text_buffer[:-1]
-            print("UNDO TEXT")
 
         elif self.connections:
-            removed = self.connections.pop()
-            print("UNDO CONNECTION:", removed)
+            self.connections.pop()
 
         elif self.shapes:
-            removed = self.shapes.pop()
-            print("UNDO SHAPE:", removed)
+            self.shapes.pop()
 
-    # -------------------------
     def export_data(self):
         return {
             "shapes": [
@@ -109,13 +116,13 @@ class HandTracker:
             ]
         }
 
-    # -------------------------
     def is_drawing(self, lm):
         return lm[8].y < lm[6].y and lm[12].y > lm[10].y
 
-    # -------------------------
     def run(self):
         cap = cv2.VideoCapture(0)
+
+        data = None  # 🔥 important fix
 
         while True:
             ret, frame = cap.read()
@@ -145,7 +152,6 @@ class HandTracker:
                 cx = int(lm[8].x * w)
                 cy = int(lm[8].y * h)
 
-                # smoothing
                 cx = int(0.7 * self.prev_x + 0.3 * cx)
                 cy = int(0.7 * self.prev_y + 0.3 * cy)
                 self.prev_x, self.prev_y = cx, cy
@@ -173,38 +179,36 @@ class HandTracker:
 
                                 x, y, w_box, h_box = cv2.boundingRect(pts)
 
-                                if shape_type == "line" and len(self.shapes) >= 2:
+                                if shape_type in ["line", "unknown"] and len(self.shapes) >= 2:
                                     s1 = find_nearest_shape(self.shapes, stroke[0])
                                     s2 = find_nearest_shape(self.shapes, stroke[-1])
 
                                     if s1 and s2 and s1 != s2:
                                         self.connections.append(Connection(s1, s2))
-                                        print("Connection created")
 
                                 elif shape_type != "unknown":
-
-                                    # 🔥 FIXED MEANING LOGIC
                                     meaning = "process"
 
                                     if self.last_gesture == "thumbs_up":
                                         if not any(s.meaning == "start" for s in self.shapes):
                                             meaning = "start"
 
-                                    elif self.last_gesture == "two_fingers":
+                                    if shape_type == "diamond":
                                         meaning = "condition"
 
                                     shape_obj = Shape(shape_type, center, meaning)
                                     shape_obj.bbox = (x, y, w_box, h_box)
 
                                     self.shapes.append(shape_obj)
-                                    print("Stored:", meaning)
 
                         self.points.append(None)
                         self.was_drawing = False
 
                 # ================= TEXT MODE =================
                 elif self.mode == "text":
-                    self.points = []
+
+                    if not self.was_drawing:
+                        self.points = []
 
                     if self.is_drawing(lm):
                         self.text_points.append((cx, cy))
@@ -213,15 +217,13 @@ class HandTracker:
                     else:
                         if (
                             self.was_drawing
-                            and 20 < len(self.text_points) < 200   # 🔥 controlled stroke size
+                            and 20 < len(self.text_points) < 200
                             and self.text_cooldown == 0
                         ):
                             img = normalize_stroke(self.text_points)
 
                             if img is not None:
                                 char = predict_character(img)
-
-                                print("PREDICTED:", char)
 
                                 if char:
                                     if time.time() - self.last_char_time > 1:
@@ -235,28 +237,25 @@ class HandTracker:
                                     if nearest:
                                         if not nearest.text:
                                             nearest.text = ""
-
                                         nearest.text += char
-                                else:
-                                    print("IGNORED LOW CONFIDENCE")
 
                         self.text_points = []
-                        self.was_drawing = False                
-                
+                        self.was_drawing = False
+
                 mp_draw.draw_landmarks(frame, results.multi_hand_landmarks[0], mp_hands.HAND_CONNECTIONS)
 
             if self.text_cooldown > 0:
                 self.text_cooldown -= 1
 
-            # draw strokes
+            # ===== DRAW =====
             for i in range(1, len(self.points)):
                 if self.points[i - 1] and self.points[i]:
                     cv2.line(frame, self.points[i - 1], self.points[i], (0, 255, 0), 2)
 
             for i in range(1, len(self.text_points)):
-                cv2.line(frame, self.text_points[i - 1], self.text_points[i], (255, 0, 0), 2)
+                if self.text_points[i - 1] and self.text_points[i]:
+                    cv2.line(frame, self.text_points[i - 1], self.text_points[i], (255, 0, 0), 2)
 
-            # draw shapes
             for s in self.shapes:
                 x, y = s.center
 
@@ -266,16 +265,23 @@ class HandTracker:
                 elif s.type == "rectangle":
                     cv2.rectangle(frame, (x - 40, y - 30), (x + 40, y + 30), (255, 0, 0), 3)
 
+                elif s.type == "diamond":
+                    pts = np.array([
+                        (x, y - 30),
+                        (x + 30, y),
+                        (x, y + 30),
+                        (x - 30, y)
+                    ])
+                    cv2.polylines(frame, [pts], True, (255, 0, 0), 3)
+
                 label = s.text if s.text else s.type
 
                 cv2.putText(frame, label, (x - 20, y - 40),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-            # connections
             for c in self.connections:
                 cv2.arrowedLine(frame, c.from_shape.center, c.to_shape.center, (0, 0, 255), 2)
 
-            # UI
             cv2.putText(frame, f"Mode: {self.mode}", (10, 40),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
 
@@ -284,27 +290,33 @@ class HandTracker:
 
             cv2.imshow("AirFlow", frame)
 
+            # ===== FIXED KEYBOARD =====
             key = cv2.waitKey(1)
 
-            if key == ord('q'):
-                break
+            if key != -1:
+                key = key & 0xFF
+                print("KEY:", key)
 
-            elif key == ord('c'):
-                self.points = []
-                self.text_points = []
-                self.text_buffer = ""
-                self.shapes = []
-                self.connections = []
-                self.was_drawing = False
+                if key == ord('q'):
+                    break
 
-            elif key == ord('u'):
-                self.undo()
+                elif key == ord('c'):
+                    self.points = []
+                    self.text_points = []
+                    self.text_buffer = ""
+                    self.shapes = []
+                    self.connections = []
+                    self.was_drawing = False
 
-            elif key == ord('e'):
-                data = self.export_data()
-                cap.release()
-                cv2.destroyAllWindows()
-                return data
+                elif key == ord('u'):
+                    self.undo()
+
+                elif key == ord('e'):
+                    print("EXPORT")
+                    data = self.export_data()
+                    break  # 🔥 FIX
 
         cap.release()
         cv2.destroyAllWindows()
+
+        return data

@@ -1,10 +1,10 @@
 import numpy as np
 import cv2
 
+
 def angle(pt1, pt2, pt3):
     v1 = pt1 - pt2
     v2 = pt3 - pt2
-
     cos_theta = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6)
     return np.degrees(np.arccos(cos_theta))
 
@@ -20,6 +20,7 @@ def detect_shape(stroke):
     scale = np.max(pts)
     if scale == 0:
         return "unknown"
+
     pts = (pts / scale * 400).astype(int)
 
     img = np.zeros((500, 500), dtype=np.uint8)
@@ -34,60 +35,69 @@ def detect_shape(stroke):
 
     cnt = max(contours, key=cv2.contourArea)
 
-    # Approximate shape
-    epsilon = 0.03 * cv2.arcLength(cnt, True)
+    perimeter = cv2.arcLength(cnt, True)
+    area = cv2.contourArea(cnt)
+
+    epsilon = 0.02 * perimeter
     approx = cv2.approxPolyDP(cnt, epsilon, True)
 
     sides = len(approx)
-    # 🔥 IMPROVED LINE DETECTION
 
     x, y, w, h = cv2.boundingRect(cnt)
+    aspect_ratio = w / (h + 1e-6)
 
-    aspect_ratio = max(w, h) / (min(w, h) + 1e-6)
-    area = cv2.contourArea(cnt)
-    perimeter = cv2.arcLength(cnt, False)
+    # -------------------------
+    # LINE (ROBUST FIX)
+    # -------------------------
+    x, y, w, h = cv2.boundingRect(cnt)
 
-    # length-based detection
-    length = max(w, h)
+    if max(w, h) > 60:
+        ratio = max(w, h) / (min(w, h) + 1e-6)
 
-    # ✅ more forgiving conditions
-    if (
-        aspect_ratio > 2.5      # was 5 → easier now
-        and length > 50         # ensure it's long enough
-        and area < 8000        # relaxed from 3000
-    ):
-        return "line"
-     
-    # if h < 15 or w < 15:
-    #     return "line"
+        if ratio > 2:   # less strict
+            return "line"    
 
-    # 🔥 RECTANGLE detection using ANGLES
-    if sides == 4:
-        pts = approx.reshape(4, 2)
+    # -------------------------
+    # QUADRILATERAL
+    # -------------------------
+    if 4 <= sides <= 6:   # 🔥 allow imperfect shapes
 
-        angles = []
-        for i in range(4):
-            a = pts[i]
-            b = pts[(i + 1) % 4]
-            c = pts[(i + 2) % 4]
+        pts4 = approx.reshape(-1, 2)
 
-            ang = angle(a, b, c)
-            angles.append(ang)
+        # side lengths
+        sides_len = []
+        for i in range(len(pts4)):
+            p1 = pts4[i]
+            p2 = pts4[(i + 1) % len(pts4)]
+            sides_len.append(np.linalg.norm(p1 - p2))
 
-        # check near 90 degrees
-        if all(70 < ang < 110 for ang in angles):
+        side_ratio = max(sides_len) / (min(sides_len) + 1e-6)
+
+        # bounding box
+        rect_area = w * h
+        fill_ratio = area / (rect_area + 1e-6)
+
+        # -------------------------
+        # DIAMOND (robust)
+        # -------------------------
+        if side_ratio < 1.5:  # allow error
+            if fill_ratio < 0.75:   # diamond takes less space
+                return "diamond"
+
+        # -------------------------
+        # RECTANGLE
+        # -------------------------
+        if fill_ratio > 0.75:
             return "rectangle"
 
-    # 🔥 CIRCLE detection (fallback)
-    area = cv2.contourArea(cnt)
-    perimeter = cv2.arcLength(cnt, True)
+    # -------------------------
+    # CIRCLE
+    # -------------------------
+    if perimeter != 0:
+        circularity = 4 * np.pi * (area / (perimeter * perimeter))
 
-    if perimeter == 0:
-        return "unknown"
-
-    circularity = 4 * np.pi * (area / (perimeter * perimeter))
-
-    if circularity > 0.6:
-        return "circle"
+        if circularity > 0.80:
+            return "circle"
 
     return "unknown"
+
