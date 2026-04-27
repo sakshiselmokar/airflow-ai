@@ -5,7 +5,7 @@ class Shape:
         self.meaning = meaning
 
         # 🔥 NEW
-        self.text = None
+        self.text = ""
         self.bbox = None    
 
 

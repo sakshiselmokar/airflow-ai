@@ -57,7 +57,7 @@ def predict_character(img):
     # -------------------------
     # 🔥 FILTER BAD PREDICTIONS
     # -------------------------
-    if confidence < 0.7:
+    if confidence < 0.6:
         return ""   # ignore weak predictions
 
     return idx_to_char.get(pred_class, "")

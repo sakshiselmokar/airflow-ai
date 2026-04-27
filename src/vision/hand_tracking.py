@@ -8,8 +8,7 @@ from collections import Counter
 
 from src.vision.gesture_detector import detect_gesture
 from src.shared.data_models import Shape, Connection
-from src.intelligence.text.predict import predict_character
-from src.intelligence.text.preprocess import normalize_stroke
+from src.intelligence.text.stroke_predict import predict_stroke
 from src.vision.shape_detector import detect_shape
 
 mp_hands = mp.solutions.hands
@@ -54,6 +53,8 @@ class HandTracker:
 
         self.points = []
         self.text_points = []
+        self.last_text_stroke = []   # 🔥 IMPORTANT FIX
+
         self.was_drawing = False
 
         self.prev_x, self.prev_y = 0, 0
@@ -122,7 +123,7 @@ class HandTracker:
     def run(self):
         cap = cv2.VideoCapture(0)
 
-        data = None  # 🔥 important fix
+        data = None
 
         while True:
             ret, frame = cap.read()
@@ -147,6 +148,12 @@ class HandTracker:
                 if stable:
                     self.last_gesture = stable
                     self.mode = self.update_mode(stable)
+
+                    if self.mode == "shape":
+                        self.text_points = []
+
+                    elif self.mode == "text":
+                        self.points = []
 
                 h, w, _ = frame.shape
                 cx = int(lm[8].x * w)
@@ -207,37 +214,38 @@ class HandTracker:
                 # ================= TEXT MODE =================
                 elif self.mode == "text":
 
-                    if not self.was_drawing:
-                        self.points = []
+                    self.points = []
 
                     if self.is_drawing(lm):
                         self.text_points.append((cx, cy))
                         self.was_drawing = True
 
                     else:
-                        if (
-                            self.was_drawing
-                            and 20 < len(self.text_points) < 200
-                            and self.text_cooldown == 0
-                        ):
-                            img = normalize_stroke(self.text_points)
+                        if self.was_drawing and len(self.text_points) > 20:
 
-                            if img is not None:
-                                char = predict_character(img)
+                            # 🔥 SAVE LAST STROKE
+                            self.last_text_stroke = self.text_points.copy()
 
-                                if char:
-                                    if time.time() - self.last_char_time > 1:
-                                        self.text_buffer += " "
+                            # 🔥 SIMPLE (no segmentation for now)
+                            recognized_text = predict_stroke(self.text_points)
 
-                                    self.text_buffer += char
-                                    self.last_char_time = time.time()
-                                    self.text_cooldown = 15
+                            print("RECOGNIZED:", recognized_text)
 
-                                    nearest = find_nearest_shape(self.shapes, self.text_points[0])
-                                    if nearest:
-                                        if not nearest.text:
-                                            nearest.text = ""
-                                        nearest.text += char
+                            if recognized_text:
+                                from src.intelligence.spatial_mapper import map_text_to_shapes
+
+                                map_text_to_shapes(
+                                    self.text_points,
+                                    self.shapes,
+                                    recognized_text
+                                )
+
+                                if time.time() - self.last_char_time > 1:
+                                    self.text_buffer += " "
+
+                                self.text_buffer += recognized_text
+                                self.last_char_time = time.time()
+                                self.text_cooldown = 15
 
                         self.text_points = []
                         self.was_drawing = False
@@ -290,7 +298,6 @@ class HandTracker:
 
             cv2.imshow("AirFlow", frame)
 
-            # ===== FIXED KEYBOARD =====
             key = cv2.waitKey(1)
 
             if key != -1:
@@ -300,21 +307,26 @@ class HandTracker:
                 if key == ord('q'):
                     break
 
-                elif key == ord('c'):
-                    self.points = []
-                    self.text_points = []
-                    self.text_buffer = ""
-                    self.shapes = []
-                    self.connections = []
-                    self.was_drawing = False
+                elif key == ord('s'):
+                    import json
 
-                elif key == ord('u'):
-                    self.undo()
+                    if not self.last_text_stroke:
+                        print("❌ No stroke captured")
+                    else:
+                        sample = {
+                            "points": self.last_text_stroke,
+                            "label": "A"
+                        }
+
+                        with open("stroke_data.json", "a") as f:
+                            f.write(json.dumps(sample) + "\n")
+
+                        print("✅ Saved:", len(self.last_text_stroke), "points")
 
                 elif key == ord('e'):
                     print("EXPORT")
                     data = self.export_data()
-                    break  # 🔥 FIX
+                    break
 
         cap.release()
         cv2.destroyAllWindows()
