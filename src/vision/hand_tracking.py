@@ -318,7 +318,7 @@ class HandTracker:
                             "label": "A"
                         }
 
-                        with open("stroke_data.json", "a") as f:
+                        with open("stroke_data_sakshi.json", "a") as f:
                             f.write(json.dumps(sample) + "\n")
 
                         print("✅ Saved:", len(self.last_text_stroke), "points")
